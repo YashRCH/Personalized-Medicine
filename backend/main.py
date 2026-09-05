@@ -26,7 +26,7 @@ app.add_middleware(
 
 # Configuration
 DATA_DIR = "data/literature"
-CHROMA_DB_DIR = "chroma_db"
+CHROMA_DB_DIR = "/tmp/chroma_db" if os.environ.get('FUNCTION_TARGET') or os.environ.get('FUNCTIONS_WORKER_RUNTIME') else "chroma_db"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 class ChatRequest(BaseModel):
@@ -173,3 +173,15 @@ def chat_with_advisor(req: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+# Firebase Functions Export
+from firebase_functions import https_fn, options
+from a2wsgi import ASGIMiddleware
+from werkzeug.test import run_wsgi_app
+
+wsgi_app = ASGIMiddleware(app)
+
+@https_fn.on_request(timeout_sec=300, memory=options.MemoryOption.GB_1)
+def api(req: https_fn.Request) -> https_fn.Response:
+    app_iter, status, headers = run_wsgi_app(wsgi_app, req.environ)
+    return https_fn.Response(app_iter, status=status, headers=headers)
